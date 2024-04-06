@@ -390,7 +390,7 @@ async function start() {
         const rpc = process.env[chain];
         const provider = new ethers.JsonRpcProvider(rpc);
         let privateKeyList = [];
-        const fPKL = fs.readFileSync('./walletsForWork.env', 'utf-8')
+        const fPKL = fs.readFileSync('./walletsForWork.txt', 'utf-8')
                                                 .split('\n')
         fPKL.forEach((value) => {
             // console.log(value.split(','))
