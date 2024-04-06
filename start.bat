@@ -1,1 +1,2 @@
 node main.mjs
+pause
