@@ -1,3 +1,3 @@
-npm install
-node main.mjs
-pause
+call npm install
+call node main.mjs
+pause 
