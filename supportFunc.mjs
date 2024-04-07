@@ -14,7 +14,28 @@ export async function getNativeTokenBalance(tokenContract, tokenAddress, provide
     }
 }
 
-export async function makeAmount(balance) {
+export async function makeAmount(balance, contract) {
+    let finalAmount;
+    const tokenAddress = await contract.getAddress();
+    console.log(tokenAddress)
     const percentage = round(lodash.random(0.02, 0.99), 2);
-    return BigInt(lodash.floor(balance*percentage));
+    const balcWithPrcnt = BigInt(lodash.floor(balance*percentage));
+    if (tokenAddress == ethers.ZeroAddress || tokenAddress == '0x4300000000000000000000000000000000000004') {
+        finalAmount = Number(balcWithPrcnt)/10**18;
+        if (finalAmount < 0.0075) {
+            return 0;
+        } else {
+            return balcWithPrcnt;
+        }
+    } else {
+        const decimals = await contract.decimals();
+        if (tokenAddress == '0x4300000000000000000000000000000000000003') {
+            finalAmount = Number(balcWithPrcnt)/10**Number(decimals);
+            if (finalAmount < 24.2718446602) {
+                return 0;
+            } else {
+                return balcWithPrcnt;
+            }
+        }
+    }
 }

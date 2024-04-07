@@ -44,6 +44,19 @@ export const chainIDList = {
             'native':'0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE',
         },
     },
+    'blast': {
+        'id': 81457,
+        'tokens': {
+            'USDB': '0x4300000000000000000000000000000000000003',
+            'ETH': '0x0000000000000000000000000000000000000000',
+            'WETH': '0x4300000000000000000000000000000000000004'
+        },
+        'native': {
+            'symbol': 'ETH',
+            'address': '0x0000000000000000000000000000000000000000',
+        },
+        'wrapped': '0x4300000000000000000000000000000000000004',
+    },
     /*'arbitrum': {
         'id': 42161,
         'tokens': {},
@@ -263,7 +276,7 @@ async function bebopSwap(tokenAmount, chain, fromToken, toToken, contract, walle
             }
             fromToken = wrappedAddress;
         } else if (toToken == ethers.ZeroAddress) {
-            toToken = chainIDList[chain].bebop.native;
+            toToken = chainIDList[chain].wrapped;
         }
 
         console.log('Checking Approve..');
@@ -428,9 +441,12 @@ async function start() {
         console.log('Chain:', chain);
         console.log('Wallet:', wallet.address)
         const balance = await getNativeTokenBalance(tokenContract, fromTokenValue, provider, wallet);
-
-        const tokenAmount = await makeAmount(Number(balance));
-
+        const tokenAmount = await makeAmount(Number(balance), tokenContract);
+        if (tokenAmount == 0) {
+            i--;
+            console.log('Amount less then 25$ | Iterection skipped');
+            continue;
+        }
         const swapParametrs = {
             amount: tokenAmount,
             fromChain: {
