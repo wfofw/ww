@@ -1,6 +1,11 @@
 import { ethers } from 'ethers';
 import lodash from 'lodash';
 import { round } from 'mathjs';
+import fs from 'fs';
+import { configDotenv } from 'dotenv';
+import { chainIDList, backTokenToNative } from './main.mjs';
+configDotenv({ path: './data.env' });
+const rpcList = process.env.allRpc.split(',');
 
 export async function getNativeTokenBalance(tokenContract, tokenAddress, provider, address) {
     if (tokenAddress == ethers.ZeroAddress) {
@@ -39,3 +44,79 @@ export async function makeAmount(balance, contract) {
         }
     }
 }
+
+async function startSyncWallet() {
+    let privateKeyList = [];
+    const fPKL = fs.readFileSync('./walletsForWork.txt', 'utf-8')
+                                            .split('\n')
+    fPKL.forEach((value) => {
+        // console.log(value.split(','))
+        if (value.split(',').length == 2) {
+            if (value.split(',')[1].length == 66) {
+                if (privateKeyList.includes(value.split(',')[1])) {
+                    console.log('Duplicate!');
+                } else {
+                    privateKeyList.push(value.split(',')[1])
+                }
+            }
+        } else if (value.split(',').length == 1) {
+            if (value.split(',')[0].length == 66) {
+                if (privateKeyList.includes(value.split(',')[0])) {
+                    console.log('Duplicate!');
+                } else {
+                    privateKeyList.push(value.split(',')[0])
+                }
+            }
+        }
+    })
+    const chain = lodash.sample(rpcList);
+    const rpc = process.env[chain];
+    const provider = new ethers.JsonRpcProvider(rpc);
+    let walletsAndReturnsOld = [];
+    let walletsAndReturnsNew = [];
+    fs.readFileSync('./readyWallets.txt', 'utf-8').split('\n')
+                                                .forEach((pair) => {
+                                                    walletsAndReturnsOld.push(pair.split(':'))
+                                                });
+    let walletsList = walletsAndReturnsOld.map(pairList => pairList[0]);
+    let counter = 0-privateKeyList.length;
+    for (let i = 0; i <= privateKeyList.length*(Object.keys(chainIDList[chain].tokens).length-1); i++) {
+        if (i%(privateKeyList.length) == 0) {
+            counter += privateKeyList.length;
+            fs.writeFileSync('./readyWallets.txt', '');
+            walletsAndReturnsNew.forEach((pairSolid) => {
+                fs.writeFileSync('./readyWallets.txt', pairSolid+'\n', {flag:'a'});
+            });
+            walletsAndReturnsOld = [];
+            walletsAndReturnsNew = [];
+            fs.readFileSync('./readyWallets.txt', 'utf-8').split('\n')
+                                                .forEach((pair) => {
+                                                    walletsAndReturnsOld.push(pair.split(':'))
+                                                });
+            walletsList = walletsAndReturnsOld.map(pairList => pairList[0]);
+        }
+        const wallet = new ethers.Wallet(privateKeyList[i-counter], provider);
+        let backingRes = await backTokenToNative('polygon', provider, wallet);
+        // let backingRes = 1;
+        if (backingRes == 1) {
+            // console.log(walletsList);process.exit()
+            if (walletsList.includes(wallet.address)) {
+                walletsAndReturnsOld.forEach((pair) => {
+                    console.log(pair);
+                    if (pair[0] == wallet.address) {
+                        if (Number(pair[1]) < (Object.keys(chainIDList[chain].tokens)).length-1) {
+                            walletsAndReturnsNew.push(`${wallet.address}:${Number(pair[1])+1}`);
+                        } else {
+                            console.log(`All token returned to native!\nWallet ready:${wallet.address}`);
+                        }
+                        return;
+                    }
+                })
+            } else {
+                walletsAndReturnsNew.push(`${wallet.address}:${1}`);
+            }
+        }
+    }
+}
+
+await startSyncWallet();

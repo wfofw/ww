@@ -171,7 +171,7 @@ async function checkForAllowance(wallet, tokenAddress, approvalAddress, amount, 
     }
 }
 
-async function backTokenToNative(chain, provider, wallet) {
+export async function backTokenToNative(chain, provider, wallet) {
     console.log('Backing..')
     const timeDelay = lodash.random(60000, 120000);
 
@@ -215,6 +215,7 @@ async function backTokenToNative(chain, provider, wallet) {
     };
     await waitDelayBebop(timeDelay, swapParametrs, wallet, provider, true);
     console.log('Native token successfully recharge!\n');
+    return 1;
 }
 
 async function bebopSwap(tokenAmount, chain, fromToken, toToken, contract, wallet, provider, back) {
@@ -397,7 +398,6 @@ async function lifiSwap(tokenAmount, fromChain, toChain, fromToken, toToken, tok
 
 async function start() {
     const iteractionAmount = 50; //Transaction amount
-    let txCounter = 0;
     for (let i = 0; i != iteractionAmount; i++) {
         const chain = lodash.sample(rpcList);
         const rpc = process.env[chain];
@@ -509,7 +509,6 @@ async function start() {
             txCounter++;
         });
     }
-    console.log(txCounter);;
 };
 
 async function waitDelayLiFi(ms, parametrs, wallet) {
@@ -544,4 +543,4 @@ async function waitDelayBebop(ms, parametrs, wallet, provider, backingData) {
     });
 }
 
-await start();
+//await start();
