@@ -213,8 +213,12 @@ export async function backTokenToNative(chain, provider, wallet) {
         toToken: toToken,
         tokenContract: finalTokenContract
     };
+    if (swapParametrs.fromToken == undefined) {
+        console.log('All token transfered to native!');
+        return 3;
+    }
     await waitDelayBebop(timeDelay, swapParametrs, wallet, provider, true);
-    console.log('Native token successfully recharge!\n');
+    console.log('Native token successfully refueled!\n');
     return 1;
 }
 
@@ -245,7 +249,7 @@ async function bebopSwap(tokenAmount, chain, fromToken, toToken, contract, walle
             'function balanceOf(address) view returns (uint)',
         ];
         const wrappedContract = new ethers.Contract(wrappedAddress, abiWrap, wallet);
-
+        let signal = 0;
         if (fromToken == ethers.ZeroAddress) {
             if (toToken == wrappedAddress) {
                 let tx = await wrappedContract.deposit({value: tokenAmount});
@@ -278,6 +282,7 @@ async function bebopSwap(tokenAmount, chain, fromToken, toToken, contract, walle
             fromToken = wrappedAddress;
         } else if (toToken == ethers.ZeroAddress) {
             toToken = chainIDList[chain].wrapped;
+            signal = 1;
         }
 
         console.log('Checking Approve..');
@@ -323,12 +328,15 @@ async function bebopSwap(tokenAmount, chain, fromToken, toToken, contract, walle
             await writeError(response.error.errorCode+'\n'+response.error.message);
             return 2;
         }
-        console.log('Response done, waiting for confirmation')
+        console.log('Response done, waiting for confirmation');
+        await waitForConfirm(response.txHash, provider);
         console.log(response);
 
         if (toToken == wrappedAddress) {
-            let txUnwrap = await wrappedContract.withdraw(tokenAmount);
-            let confirmRes = await waitForConfirm(txUnwrap.hash, provider);
+            if (signal == 1) {
+                let txUnwrap = await wrappedContract.withdraw((tokenAmount)*(BigInt(10**18)/(BigInt(10)**(await contract.decimals()))));
+                let confirmRes = await waitForConfirm(txUnwrap.hash, provider);
+            }
         };
         console.log('Done!');
         return 1;
