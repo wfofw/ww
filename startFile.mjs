@@ -22,7 +22,7 @@ async function start() {
     fPKL.forEach((value) => {
         // console.log(value.split(','))
         if (value.split(',').length == 2) {
-            if (value.split(',')[1].length == 66) {
+            if (value.split(',')[1].length >= 64) {
                 if (privateKeyList.includes(value.split(',')[1])) {
                     console.log('Duplicate!');
                 } else {
@@ -30,7 +30,7 @@ async function start() {
                 }
             }
         } else if (value.split(',').length == 1) {
-            if (value.split(',')[0].length == 66) {
+            if (value.split(',')[0].length >= 64) {
                 if (privateKeyList.includes(value.split(',')[0])) {
                     console.log('Duplicate!');
                 } else {
@@ -142,9 +142,12 @@ async function start() {
             }
         }
         
-        await waitDelay(timeDelay, swapParametrs, wallet, provider).then(() => {
-            console.log('NEXT');
-        });
+        const swapRes = await waitDelay(timeDelay, swapParametrs, wallet, provider);
+        console.log('NEXT');
+        if (swapRes == 1) {
+            let data = `${wallet.address}:`
+            fs.writeFileSync('./auxiliaryFiles/walletsStatus.txt',)
+        }
     }
 };
 
