@@ -1,3 +1,3 @@
 call npm install
-call node main.mjs
+call node startFile.mjs
 pause 

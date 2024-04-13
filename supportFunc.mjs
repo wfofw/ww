@@ -3,9 +3,155 @@ import lodash from 'lodash';
 import { round } from 'mathjs';
 import fs from 'fs';
 import { configDotenv } from 'dotenv';
-import { chainIDList, backTokenToNative } from './main.mjs';
 configDotenv({ path: './data.env' });
+import { bebopSwap } from './exchanges/bebop/bebopMain.mjs';
+import { relaySwap } from './exchanges/relay/relayMain.mjs';
+import { lifiSwap } from './exchanges/lifi/lifiMain.mjs';
+
 const rpcList = process.env.allRpc.split(',');
+
+export const chainIDList = {
+    polygon: {
+        id: 137,
+        tokens: {
+            USDT: '0xc2132D05D31c914a87C6611C10748AEb04B58e8F',
+            //USDC: '0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359',
+            USDCe: '0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174',
+            MATIC: ethers.ZeroAddress,
+            WMATIC: '0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270',
+            //UNI: '0xb33EaAd8d922B1083446DC23f610c2567fB5180f',
+            //FRAX: '0x45c32fA6DF82ead1e2EF74d17b76547EDdFaFF89',
+        },
+        native: {
+            symbol: 'MATIC',
+            address: ethers.ZeroAddress,
+        },
+        wrapped: '0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270',
+        bebop: {
+            native:'0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE',
+        },
+    },
+    optimism: {
+        id: 10,
+        tokens: {
+            ETH: ethers.ZeroAddress,
+        },
+        native: {
+            symbol: 'ETH',
+            address: ethers.ZeroAddress,
+        },
+        wrapped: '0x4200000000000000000000000000000000000006'
+    },
+    blast: {
+        id: 81457,
+        tokens: {
+            USDB: '0x4300000000000000000000000000000000000003',
+            ETH: ethers.ZeroAddress,
+            WETH: '0x4300000000000000000000000000000000000004'
+        },
+        native: {
+            symbol: 'ETH',
+            address: ethers.ZeroAddress,
+        },
+        wrapped: '0x4300000000000000000000000000000000000004',
+    },
+    avalanche: {
+        id: 43114,
+        tokens: {
+            AVAX: ethers.ZeroAddress,
+            USDC: '0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E',
+            USDCe: '0xA7D7079b0FEaD91F3e65f86E8915Cb59c1a4C664',
+            USDTe: '0xc7198437980c041c805A1EDcbA50c1Ce5db95118',
+        },
+        native: {
+            symbol: 'AVAX',
+            address: ethers.ZeroAddress,
+        }
+    },
+}
+
+export async function writeError(errorStack) {
+    fs.appendFile('./auxiliaryFiles/error.log', errorStack+'\n', (err) => {
+        if (err) {
+            console.error('Failed to write error to file');
+        } else {
+            console.log('Error successfuly write to file');
+        }
+    })
+}
+
+export async function waitForConfirm(hash, provider) {
+    const currentBlockNum = await provider.getBlockNumber();
+    let waitForCreation = true;
+    let waitForInclude = true;
+    let waitForConfirmation = true;
+    try {
+        while(waitForCreation) {
+        let blockNum = await provider.getBlockNumber();
+        console.log('Start:', currentBlockNum, '----blockNum:', blockNum);
+        if ((blockNum-currentBlockNum)>=100) {
+            console.log('to much blocks without tx')
+            return 0;
+        }
+        let res = await provider.getTransaction(hash);
+        if (res != null) {
+            waitForCreation = false;
+        }
+        console.log('Tx data:', res);
+        };
+
+        while(waitForInclude) {
+            let receipt = await provider.getTransactionReceipt(hash);
+            console.log('waitForInclude', receipt);
+            if (receipt != null) {
+                while(waitForConfirmation) {
+                    let receipt = await provider.getTransactionReceipt(hash);
+                    if (receipt == null) {
+                        continue;
+                    }
+                    let confirmations = await receipt.confirmations();
+                    console.log(confirmations);
+                    if (confirmations >= 23) {
+                        waitForConfirmation = false;
+                        waitForInclude = false;
+                        return 1;
+                    }
+                }
+            }
+        }
+    } catch(error) {
+        await writeError(error.stack);
+    }
+}
+
+export async function checkForAllowance(wallet, tokenAddress, approvalAddress, amount, provider) {
+    const contract = new ethers.Contract(tokenAddress, abi, wallet);
+    const allowance = await contract.allowance(await wallet.getAddress(), approvalAddress);
+
+    if (Number(allowance) < Number(amount)) {
+        console.log('Making approve...');
+        try {
+            console.log('Address for approve:', approvalAddress, '\nToken address:', tokenAddress, '\nAmount to approve:', BigInt(amount), '\nGas price:', Number((await provider.getFeeData()).maxFeePerGas)/10**9)
+            const approveTx = await contract.approve(approvalAddress, BigInt(amount), {gasPrice: BigInt(lodash.floor(Number((await provider.getFeeData()).maxFeePerGas)*1.1))});
+            console.log(`Waiting for approve...\n${await approveTx.hash}`);
+            let confirmRes = await waitForConfirm(approveTx.hash, provider);
+            if (confirmRes == 0) {
+                console.log('Tx doesn`t exist');
+                return 0;
+            } else if (confirmRes == 1) {
+                console.log('Tx done!');
+            } else {
+                console.log('Unexpected error');
+                return 2;
+            }
+            console.log('Approve Done!');
+        } catch(error) {
+            writeError(error.stack);
+        }
+    } else {
+        console.log('Approve unnecessary');
+    }
+}
 
 export async function getNativeTokenBalance(tokenContract, tokenAddress, provider, address) {
     if (tokenAddress == ethers.ZeroAddress) {
@@ -17,6 +163,80 @@ export async function getNativeTokenBalance(tokenContract, tokenAddress, provide
         //console.log(tokenAddress,' has ', balance);
         return BigInt(balance);
     }
+}
+
+export async function waitDelay(ms, parametrs, wallet, provider) {
+    console.log(`------|Swap started|------`,`\nFrom: ${parametrs.fromToken}\nTo: ${parametrs.toToken}`);
+    console.log('Waiting for time delay..', round(ms/1000), 'second');
+    return new Promise(resolve => {
+        setTimeout(async () => {
+            await (
+                bebopSwap(parametrs, wallet, provider)
+            );
+            resolve();
+        }, ms);
+    }).then(() => {
+        console.log('------|Swap finished!|------');
+    });
+}
+
+export function addParametrs(path, parametrs) {
+    if (Object.keys(parametrs).length > 0) {
+        const queryParams = new URLSearchParams(parametrs);
+        path = path+'?'+queryParams;
+    };
+    return path;
+}
+
+export async function backTokenToNative(chain, provider, wallet) {
+    console.log('Backing..')
+    const timeDelay = lodash.random(60000, 120000);
+
+    const fromChain = chainIDList[chain].id;
+    const toChain = fromChain;
+
+    const fromTokensList = Object.keys(chainIDList[chain].tokens).filter(item => item != chainIDList[chain].native.symbol);
+
+    const toToken = chainIDList[chain].native.address;
+
+    let initialfromTokenValue;
+    let finalFromTokenValue;
+    let initialtokenContract;
+    let finalTokenContract;
+    let tokenAmount;
+    let maxAmount = BigInt(0);
+    for (let tokenKey of fromTokensList) {
+        initialfromTokenValue = chainIDList[chain].tokens[tokenKey];
+        initialtokenContract = new ethers.Contract(initialfromTokenValue, abi, provider);
+        tokenAmount = await initialtokenContract.balanceOf(wallet.address);
+        if (tokenAmount > maxAmount) {
+            maxAmount = tokenAmount;
+            finalTokenContract = initialtokenContract;
+            finalFromTokenValue = initialfromTokenValue;
+        }
+    }
+    const amount = maxAmount;
+    const swapParametrs = {
+        amount: amount,
+        fromChain: {
+            'chainId': fromChain,
+            'chainName': chain,
+        },
+        toChain: {
+            'chainId': toChain,
+            'chainName': chain,
+        },
+        fromToken: finalFromTokenValue,
+        toToken: toToken,
+        tokenContract: finalTokenContract
+    };
+    if (swapParametrs.fromToken == undefined) {
+        console.log('All token transfered to native!');
+        return 3;
+    }
+    await waitDelayBebop(timeDelay, swapParametrs, wallet, provider, soft);
+    console.log('Native token successfully refueled!\n');
+    return 1;
 }
 
 export async function makeAmount(balance, contract) {
@@ -145,4 +365,4 @@ async function backAllTokenToNative() {
     }
 }
 
-await backAllTokenToNative();
+//await backAllTokenToNative();
