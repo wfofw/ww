@@ -3,7 +3,7 @@ import lodash from 'lodash';
 import fs from 'fs';
 import { configDotenv } from 'dotenv';
 configDotenv({ path: './data.env' });
-import { getNativeTokenBalance, makeAmount, chainIDList, waitDelay } from './supportFunc.mjs'
+import { getNativeTokenBalance, makeAmount, chainIDList, waitDelay, backTokenToNative } from './supportFunc.mjs'
 const rpcList = process.env.allRpc.split(',');
 
 export const abi = [
@@ -119,6 +119,22 @@ async function start() {
                     continue;
             }  else if ((await tokenContract.getAddress()) == ethers.ZeroAddress) {
                     if (nativeTokenBalance-Number(tokenAmount)<=0.085*10**18) {
+                        console.log('Native token limit reached | Iterection skipped');
+                    i--;
+                    continue;
+                    }
+            }
+        } else if (fromChain == chainIDList.blast.id) {
+            if (nativeTokenBalance <= 0.001071*10**18) {
+                await backTokenToNative('blast', provider, wallet);
+                i--;
+                continue;
+            }   else if (balance < tokenAmount) {
+                    i--;
+                    console.log('Influence balance | Iterection skipped');
+                    continue;
+            }  else if ((await tokenContract.getAddress()) == ethers.ZeroAddress) {
+                    if (nativeTokenBalance-Number(tokenAmount)<=0.001071*10**18) {
                         console.log('Native token limit reached | Iterection skipped');
                     i--;
                     continue;
