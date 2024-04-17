@@ -70,6 +70,14 @@ export const chainIDList = {
     },
 }
 
+export const abi = [
+    'function balanceOf(address) view returns (uint)',
+    'function decimals() view returns (uint)',
+    'function symbol() view returns (string)',
+    'function approve(address, uint256) returns (bool)',
+    'function allowance(address, address) view returns (uint)',
+]
+
 export async function writeError(errorStack) {
     fs.appendFile('./auxiliaryFiles/error.log', errorStack+'\n', (err) => {
         if (err) {
@@ -170,13 +178,10 @@ export async function waitDelay(ms, parametrs, wallet, provider) {
     console.log('Waiting for time delay..', round(ms/1000), 'second');
     return new Promise(resolve => {
         setTimeout(async () => {
-            await (
-                bebopSwap(parametrs, wallet, provider)
-            );
-            resolve();
+            const swapRes = await bebopSwap(parametrs, wallet, provider);
+            console.log('------|Swap finished!|------');
+            resolve(swapRes);
         }, ms);
-    }).then(() => {
-        console.log('------|Swap finished!|------');
     });
 }
 
@@ -195,9 +200,9 @@ export async function backTokenToNative(chain, provider, wallet) {
     const fromChain = chainIDList[chain].id;
     const toChain = fromChain;
 
-    const fromTokensList = Object.keys(chainIDList[chain].tokens).filter(item => item != chainIDList[chain].native.symbol);
+    const fromTokensList = Object.keys(chainIDList[chain].tokens).filter(item => item != /*'USDB'*/chainIDList[chain].native.symbol);
 
-    const toToken = chainIDList[chain].native.address;
+    const toToken = chainIDList[chain].native.symbol/*tokens['USDB']*/;
 
     let initialfromTokenValue;
     let finalFromTokenValue;
@@ -208,7 +213,11 @@ export async function backTokenToNative(chain, provider, wallet) {
     for (let tokenKey of fromTokensList) {
         initialfromTokenValue = chainIDList[chain].tokens[tokenKey];
         initialtokenContract = new ethers.Contract(initialfromTokenValue, abi, provider);
-        tokenAmount = await initialtokenContract.balanceOf(wallet.address);
+        if (await initialtokenContract.getAddress() == ethers.ZeroAddress) {
+            tokenAmount = BigInt(Number(await provider.getBalance(wallet.address)) - 0.00096342*10**18);
+        } else {
+            tokenAmount = await initialtokenContract.balanceOf(wallet.address);
+        }
         if (tokenAmount > maxAmount) {
             maxAmount = tokenAmount;
             finalTokenContract = initialtokenContract;
@@ -234,7 +243,7 @@ export async function backTokenToNative(chain, provider, wallet) {
         console.log('All token transfered to native!');
         return 3;
     }
-    await waitDelayBebop(timeDelay, swapParametrs, wallet, provider, soft);
+    await waitDelay(timeDelay, swapParametrs, wallet, provider);
     console.log('Native token successfully refueled!\n');
     return 1;
 }
@@ -242,22 +251,27 @@ export async function backTokenToNative(chain, provider, wallet) {
 export async function makeAmount(balance, contract) {
     let finalAmount;
     const tokenAddress = await contract.getAddress();
-    console.log(tokenAddress)
     const percentage = round(lodash.random(0.02, 0.99), 2);
     const balcWithPrcnt = BigInt(lodash.floor(balance*percentage));
     if (tokenAddress == ethers.ZeroAddress || tokenAddress == '0x4300000000000000000000000000000000000004') {
         finalAmount = Number(balcWithPrcnt)/10**18;
-        if (finalAmount < 0.0075) {
+        if (balance < 0.0094885*10**18) {
             return 0;
+        }
+        if (finalAmount < 0.0094885) {
+            return makeAmount(balance, contract);
         } else {
             return balcWithPrcnt;
         }
     } else {
         const decimals = await contract.decimals();
         if (tokenAddress == '0x4300000000000000000000000000000000000003') {
+            if (balance < 24.2718446602*10**Number(decimals)) {
+                return 0
+            }
             finalAmount = Number(balcWithPrcnt)/10**Number(decimals);
             if (finalAmount < 24.2718446602) {
-                return 0;
+                return makeAmount(balance, contract);
             } else {
                 return balcWithPrcnt;
             }
@@ -267,7 +281,7 @@ export async function makeAmount(balance, contract) {
 
 async function backAllTokenToNative() {
     let privateKeyList = [];
-    const fPKL = fs.readFileSync('./walletsForWork.txt', 'utf-8')
+    const fPKL = fs.readFileSync('./auxiliaryFiles/walletsForWork.txt', 'utf-8')
                                             .split('\n')
     fPKL.forEach((value) => {
         // console.log(value.split(','))
@@ -294,7 +308,7 @@ async function backAllTokenToNative() {
     const provider = new ethers.JsonRpcProvider(rpc);
     let walletsAndReturnsOld = [];
     let walletsAndReturnsNew = [];
-    fs.readFileSync('./readyWallets.txt', 'utf-8').split('\n')
+    fs.readFileSync('./auxiliaryFiles/readyWallets.txt', 'utf-8').split('\n')
                                                 .forEach((pair) => {
                                                     walletsAndReturnsOld.push(pair.split(':'))
                                                 });
@@ -310,13 +324,13 @@ async function backAllTokenToNative() {
             counter += privateKeyList.length;
             //fs.writeFileSync('./readyWallets.txt', '');
             let data = walletsAndReturnsNew.join('\n');
-            fs.writeFileSync('./readyWallets.txt', data);
+            fs.writeFileSync('./auxiliaryFiles/readyWallets.txt', data);
             /*walletsAndReturnsNew.forEach((pairSolid) => {
                 fs.writeFileSync('./readyWallets.txt', pairSolid+'\n', {flag:'a'});
             });*/
             walletsAndReturnsOld = [];
             walletsAndReturnsNew = [];
-            fs.readFileSync('./readyWallets.txt', 'utf-8').split('\n')
+            fs.readFileSync('./auxiliaryFiles/readyWallets.txt', 'utf-8').split('\n')
                                                 .forEach((pair) => {
                                                     walletsAndReturnsOld.push(pair.split(':'))
                                                 });
@@ -339,7 +353,7 @@ async function backAllTokenToNative() {
             continue;
         }
         readyWalletsCounter = 0
-        let backingRes = await backTokenToNative('polygon', provider, wallet);
+        let backingRes = await backTokenToNative('blast', provider, wallet);
         // let backingRes = 1;
         if (backingRes == 1) {
             // console.log(walletsList);process.exit()
@@ -365,4 +379,4 @@ async function backAllTokenToNative() {
     }
 }
 
-//await backAllTokenToNative();
+backAllTokenToNative();

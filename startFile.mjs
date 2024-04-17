@@ -3,19 +3,11 @@ import lodash from 'lodash';
 import fs from 'fs';
 import { configDotenv } from 'dotenv';
 configDotenv({ path: './data.env' });
-import { getNativeTokenBalance, makeAmount, chainIDList, waitDelay, backTokenToNative } from './supportFunc.mjs'
+import { getNativeTokenBalance, makeAmount, chainIDList, waitDelay, backTokenToNative, abi } from './supportFunc.mjs'
 const rpcList = process.env.allRpc.split(',');
 
-export const abi = [
-    'function balanceOf(address) view returns (uint)',
-    'function decimals() view returns (uint)',
-    'function symbol() view returns (string)',
-    'function approve(address, uint256) returns (bool)',
-    'function allowance(address, address) view returns (uint)',
-]
-
 async function start() {
-    const iteractionAmount = 50; //Transaction amount
+    const iteractionAmount = 9000; //Transaction amount
     let privateKeyList = [];
     const fPKL = fs.readFileSync('./auxiliaryFiles/walletsForWork.txt', 'utf-8')
                                             .split('\n')
@@ -86,6 +78,27 @@ async function start() {
 
         const nativeTokenBalance = Number(await provider.getBalance(wallet.address));
         console.log('Amount:', tokenAmount, '\nNative:', nativeTokenBalance/10**18);
+
+        const walletStatData = fs.readFileSync('./auxiliaryFiles/walletsStatus.txt', 'utf-8')
+                                                .split('\n')
+                                                .map(value => value.split(':'))
+        const walletsInWork = walletStatData.map(value => value[0]);
+        let checkWalletStatus = 0;
+        if (walletsInWork.includes(wallet.address)) {
+            for (let i = 0; i<walletsInWork.length; i++) {
+                if (walletStatData[i][0] == wallet.address) {
+                    if (Number(walletStatData[i][4]) == 1) {
+                        checkWalletStatus = 1;
+                        break;
+                    }
+                }
+            }
+        }
+        if (checkWalletStatus == 1) {
+            console.log(`Wallet ${wallet.address} also ready!`);
+            continue;
+        }
+        let unplannedTx = 0;
         if (tokenAmount == BigInt(0)) {
             i--;
             console.log('Token amount must be more than 0 | Iterection skipped');
@@ -125,30 +138,86 @@ async function start() {
                     }
             }
         } else if (fromChain == chainIDList.blast.id) {
-            if (nativeTokenBalance <= 0.001071*10**18) {
+            if (nativeTokenBalance <= 0.0012683*10**18) {
                 await backTokenToNative('blast', provider, wallet);
-                i--;
-                continue;
+                unplannedTx=1;
             }   else if (balance < tokenAmount) {
                     i--;
                     console.log('Influence balance | Iterection skipped');
                     continue;
             }  else if ((await tokenContract.getAddress()) == ethers.ZeroAddress) {
-                    if (nativeTokenBalance-Number(tokenAmount)<=0.001071*10**18) {
+                    if (nativeTokenBalance-Number(tokenAmount)<=0.00047608*10**18) {
                         console.log('Native token limit reached | Iterection skipped');
                     i--;
                     continue;
                     }
             }
         }
+
+        const amountOfSwaps = 5;
         
-        const swapRes = await waitDelay(timeDelay, swapParametrs, wallet, provider);
-        console.log('NEXT');
-        if (swapRes == 1) {
-            let data = `${wallet.address}:`
-            fs.writeFileSync('./auxiliaryFiles/walletsStatus.txt',)
+        let counter = unplannedTx;
+        let revCounter = unplannedTx;
+        let backToNative = 0;
+        let walletStatus = 0;
+        let data = '';
+        let backRes = 0;
+        if (walletsInWork.includes(wallet.address)) {
+            for (let i = 0;i<walletStatData.length;i++) {
+                if (walletStatData[i][0] == wallet.address) {
+                    if (Number(walletStatData[i][4]) == 1) {
+                        console.log('Wallet ready!');
+                        continue;
+                    } else if (Number(walletStatData[i][2]) == 1) {
+                        backRes = await backTokenToNative(chain, provider, wallet);
+                        if (backRes == 3) {
+                            walletStatus = 1;
+                        }
+                        console.log('Backing done!');
+                        backToNative=1
+                    } else if (Number(walletStatData[i][1]) == 0) {
+                        await waitDelay(timeDelay, swapParametrs, wallet, provider);
+                        console.log('Swap done!');
+                        counter++;
+                    } else if (Number(walletStatData[i][1])%amountOfSwaps == 0) {
+                        backToNative = 1;
+                    } else {
+                        await waitDelay(timeDelay, swapParametrs, wallet, provider);
+                        console.log('Swap done!');
+                        counter=Number(walletStatData[i][1])+1;
+                    }
+                } else {
+                    continue;
+                }
+            }
+            data = `${wallet.address}:${counter}:${backToNative}:${revCounter}:${walletStatus}`;
+        } else {
+            await waitDelay(timeDelay, swapParametrs, wallet, provider);
+            data = `${wallet.address}:${1}:${backToNative}:${revCounter}:${walletStatus}`;
         }
+
+        let dataToWrite = ''
+        let solidWalletsStatusList = fs.readFileSync('./auxiliaryFiles/walletsStatus.txt', 'utf-8').split('\n');
+        if (solidWalletsStatusList.length == 0) {
+            dataToWrite = data;
+        } else {
+            let lineNum = -1;
+            for (let i = 0; i < solidWalletsStatusList.length; i++) {
+                if (solidWalletsStatusList[i].includes(wallet.address)) {
+                    lineNum = i;
+                    break;
+                }
+            }
+            if (lineNum !== -1) {
+                solidWalletsStatusList[lineNum] = data;
+            } else {
+                solidWalletsStatusList.push(data)
+            }
+            dataToWrite = solidWalletsStatusList.join('\n');
+        }
+        
+        fs.writeFileSync('./auxiliaryFiles/walletsStatus.txt', dataToWrite, 'utf-8')
     }
 };
 
-start()
+//start();

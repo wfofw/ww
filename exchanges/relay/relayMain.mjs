@@ -6,8 +6,6 @@ export async function relaySwap(parametrs, wallet, provider) {
     const fromChain = parametrs.fromChain.chaidId
     const toChain = parametrs.toChain.chaidId
     const fromToken = parametrs.fromTokenSymbol.toLowerCase()
-    const toToken = parametrs.toTokenSymbol
-    const contract = parametrs.tokenContract
 
     const bridgeParam = {
         user: wallet.address,

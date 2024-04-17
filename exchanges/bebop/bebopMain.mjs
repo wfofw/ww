@@ -18,11 +18,11 @@ const RFQ_PARAM_TYPES = {
 }
 
 export async function bebopSwap(parametrs, wallet, provider) {
-    const tokenAmount = parametrs.amount
+    let tokenAmount = parametrs.amount
     const chain = parametrs.fromChain.chainName
-    const fromToken = parametrs.fromToken
-    const toToken = parametrs.toToken
-    const contract = parametrs.tokenContract
+    let fromToken = parametrs.fromToken
+    let toToken = parametrs.toToken
+    let contract = parametrs.tokenContract
     const rfqApprovalAddress = '0xBeB09000fa59627dc02Bb55448AC1893EAa501A5';
 
     const RFQ_PARAM_DOMAIN = {
@@ -68,12 +68,12 @@ export async function bebopSwap(parametrs, wallet, provider) {
                 console.log('Wrap started..');
                 let tx = await wrappedContract.deposit({value: tokenAmount});
                 console.log('Hash:', tx.hash, '\nWait for confirmations..');
-                let confirmRes = await waitForConfirm(tx.hash, provider);
+                await waitForConfirm(tx.hash, provider);
                 console.log('Wrap end!');
             }
             fromToken = wrappedAddress;
         } else if (toToken == ethers.ZeroAddress) {
-            toToken = chainIDList[chain].wrapped;
+            toToken = wrappedAddress;
             signal = 1;
         }
 
@@ -120,9 +120,10 @@ export async function bebopSwap(parametrs, wallet, provider) {
             await writeError(response.error.errorCode+'\n'+response.error.message);
             return 2;
         }
+        console.log(response);
         console.log('Response done, waiting for confirmation');
         await waitForConfirm(response.txHash, provider);
-        console.log(response);
+        console.log('Confirm for response done!')
 
         if (toToken == wrappedAddress) {
             if (signal == 1) {
